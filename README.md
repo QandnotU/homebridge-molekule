@@ -49,8 +49,8 @@ It should be configurable in plugin settings using homebridge-ui-x, if not, add 
 
 - `threshold` sets the percentage at which a filter change warning is dislayed in the home app
 - `excludeAirMiniPlus` disables Air Mini+ so you can use their native HomeKit function
-- `silentAuto` default auto state on the Air Pro, silent (true) or standard (false)
-- `quietMode` adds a separate **Quiet Mode** switch accessory for Air Pro devices (turning it on enables Auto + Quiet)
+- `silentAuto` **default only** — when a device is switched to Auto *from its purifier tile*, start in Quiet (true) vs Standard (false). Air Pro only
+- `quietMode` adds a separate **Quiet Mode** switch accessory (Air Pro only) — a *live* toggle for Quiet mode (enables Auto + Quiet). Independent of `silentAuto`; the two stay in sync
 - `co2Threshold` CO₂ level in ppm above which the CO₂ sensor reports a detected/abnormal state
 - `pollInterval` how often (seconds, default 30) device state is refreshed from the Molekule API — HomeKit changes apply instantly; this governs how fast changes made elsewhere (physical controls, the app, air-quality drift) show up
 

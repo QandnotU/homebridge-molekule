@@ -40,16 +40,16 @@
         "description": "Exclude HomeKit enabled Air Mini+"
       },
       "silentAuto": {
-        "title": "Silent Auto",
+        "title": "Auto defaults to Quiet",
         "type": "boolean",
         "default": false,
-        "description": "When setting Auto/Manual state, use Silent or Standard auto state on Air Pro devices?"
+        "description": "Default value only: when a device is switched to Auto from its purifier tile, start in Quiet (silent) rather than Standard. Air Pro only. If the Quiet Mode switch below is enabled, it can override this live."
       },
       "quietMode": {
         "title": "Expose Quiet Mode switch",
         "type": "boolean",
         "default": false,
-        "description": "Add a separate 'Quiet Mode' switch accessory for Air Pro devices. Turning it on enables Auto + Quiet (silent) mode."
+        "description": "Add a separate 'Quiet Mode' switch accessory (Air Pro only) — a live toggle for Quiet (silent) mode. Turning it on enables Auto + Quiet. Independent of the default above; the two stay in sync."
       },
       "co2Threshold": {
         "title": "CO₂ Alarm Threshold (ppm)",
