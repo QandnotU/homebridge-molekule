@@ -4,25 +4,23 @@
   "singular": false,
   "schema": {
     "type": "object",
+    "required": ["name", "email", "password"],
     "properties": {
       "name": {
         "title": "Name",
         "type": "string",
-        "default": "homebridge-molekule",
-        "required": true
+        "default": "homebridge-molekule"
       },
       "email": {
         "title": "Email",
         "type": "string",
         "format": "email",
-        "placeholder": "example@example.com",
-        "required": true
+        "placeholder": "example@example.com"
       },
       "password": {
         "title": "Password",
         "type": "string",
         "placeholder": "********",
-        "required": true,
         "description": "<b>Ensure password is correct, othersise a reset may become necessary.</b>"
       },
       "threshold": {

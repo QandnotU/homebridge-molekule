@@ -2,7 +2,7 @@
   "private": false,
   "displayName": "Homebridge Molekule",
   "name": "@qandnotu/homebridge-molekule",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "A Plugin for Molekule Air Purifiers for use with Homebridge.",
   "license": "Unlicense",
   "publishConfig": {
@@ -15,6 +15,7 @@
   "bugs": {
     "url": "https://github.com/QandnotU/homebridge-molekule/issues"
   },
+  "homepage": "https://github.com/QandnotU/homebridge-molekule#readme",
   "engines": {
     "node": "^22.12.0 || ^24.0.0",
     "homebridge": "^1.8.0 || ^2.0.0"
@@ -28,7 +29,13 @@
     "prepublishOnly": "npm run lint && npm run build"
   },
   "keywords": [
-    "homebridge-plugin"
+    "homebridge-plugin",
+    "molekule",
+    "air-purifier",
+    "air-quality",
+    "homekit",
+    "peco",
+    "co2"
   ],
   "dependencies": {
     "amazon-cognito-identity-js": "^6.3.18"
