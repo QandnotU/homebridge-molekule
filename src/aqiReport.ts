@@ -20,9 +20,9 @@ export class aqiReport {
       (Date.now() - 1000 * 60 * 60) +
       "&resolution=5&toDate=" +
       Date.now();
-    const response = await (
+    const response = (await (
       await this.requester.httpCall("GET", serialNumber + extra, "", 1)
-    ).json();
+    ).json()) as { message?: string; sensorData?: aqiType[] };
     const data: Record<string, number> = {
       PM2_5: 0,
       PM10: 0,
@@ -30,8 +30,8 @@ export class aqiReport {
       TVOC: 0,
       CO2: 0,
     };
-    if (response === undefined || response.message == "Sensor data not found") throw new Error("Failed to get AQI data");
-    
+    if (!response || response.message === "Sensor data not found" || !response.sensorData)
+      throw new Error("Failed to get AQI data");
     else {
       response.sensorData.forEach((pollutant: aqiType) => {
         for (

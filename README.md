@@ -11,7 +11,7 @@
 
 <span align="left">
 
-A Homebridge Plugin for Molekule Air Purifiers. Once you install this plugin you can say:
+A Homebridge Plugin for Molekule Air Purifiers. Compatible with both Homebridge v1 and Homebridge v2. Once you install this plugin you can say:
 
 ```
 Hey Siri, what's the status of the Air Purifier Filter?
@@ -40,14 +40,36 @@ It should be configurable in plugin settings using homebridge-ui-x, if not, add 
   "password": "YOUR PASSWORD HERE",
   "threshold": 10,
   "excludeAirMiniPlus": false,
-  "silentAuto": false
+  "silentAuto": false,
+  "quietMode": false,
+  "co2Threshold": 1000,
+  "pollInterval": 30
 }
 ```
 
 - `threshold` sets the percentage at which a filter change warning is dislayed in the home app
 - `excludeAirMiniPlus` disables Air Mini+ so you can use their native HomeKit function
 - `silentAuto` default auto state on the Air Pro, silent (true) or standard (false)
-- `AQIseparate` reports AQI and humidity as a separate accessory so that the data is present in the home overview
+- `quietMode` adds a **Quiet** switch to Air Pro devices (turning it on enables Auto + Quiet)
+- `co2Threshold` CO₂ level in ppm above which the CO₂ sensor reports a detected/abnormal state
+- `pollInterval` how often (seconds, default 30) device state is refreshed from the Molekule API — HomeKit changes apply instantly; this governs how fast changes made elsewhere (physical controls, the app, air-quality drift) show up
+
+# v1.5.0
+- Homebridge v2 support (now requires Node.js 22 or 24)
+- air quality, PM2.5/PM10/VOC, **CO₂ (new dedicated sensor)** and humidity are now exposed on their correct HomeKit sensor services — fixes the "characteristic not in required or optional" warnings
+- filter status moved to a proper linked FilterMaintenance service
+- offline devices now reported via StatusActive/StatusFault on the sensors
+- AirQuality is derived from PM2.5 for finer (5-level) reporting
+- optional **Quiet** switch for Air Pro (`quietMode`)
+- single shared poll loop (`pollInterval`) instead of an API call per HomeKit read
+- firmware version now displays correctly (Molekule's 4-part version trimmed to HomeKit's 3-part format)
+- replaced the unused `node-fetch` dependency with Node's built-in `fetch`
+- updated `amazon-cognito-identity-js` to v6 and modernised the toolchain (ESLint flat config, TypeScript 5)
+- fixed the filter-change `threshold` default never being applied
+- fixed auto/smart mode being silently disabled on newly-added auto-capable devices
+- stopped logging account credentials in debug output
+- **note:** the `AQIseparate` option was removed — sensors are now always on their own services
+
 # v1.4.1
 - renamed `normal` to `standard`
 - added `AQIseparate` switch to separate humidity and AQI reporting

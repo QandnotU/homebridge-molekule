@@ -45,11 +45,27 @@
         "default": false,
         "description": "When setting Auto/Manual state, use Silent or Standard auto state on Air Pro devices?"
       },
-      "AQIseparate": {
-        "title": "Separate AQI accessory",
+      "quietMode": {
+        "title": "Expose Quiet switch",
         "type": "boolean",
-        "default": true,
-        "description": "Report AQI as a separate accessory. Extra steps to set auto/manual state, although you can see the air quality in the home overview."
+        "default": false,
+        "description": "Add a 'Quiet' switch for Air Pro devices. Turning it on enables Auto + Quiet (silent) mode."
+      },
+      "co2Threshold": {
+        "title": "CO₂ Alarm Threshold (ppm)",
+        "type": "integer",
+        "default": 1000,
+        "minimum": 400,
+        "maximum": 5000,
+        "description": "CO₂ level (ppm) above which the CO₂ sensor reports an abnormal/detected state."
+      },
+      "pollInterval": {
+        "title": "Poll Interval (seconds)",
+        "type": "integer",
+        "default": 30,
+        "minimum": 5,
+        "maximum": 600,
+        "description": "How often to refresh device state from the Molekule API. Changes made from HomeKit update instantly; this controls how quickly changes made elsewhere (physical controls, the Molekule app, air-quality drift) are reflected."
       }
     }
   }

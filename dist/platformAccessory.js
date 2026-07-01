@@ -4,352 +4,383 @@ exports.MolekulePlatformAccessory = void 0;
 const aqiReport_1 = require("./aqiReport");
 /**
  * Platform Accessory
- * An instance of this class is created for each accessory your platform registers
- * Each accessory may expose multiple services of different service types.
+ * An instance of this class is created for each accessory the platform registers.
+ * Each Molekule device is modelled as an AirPurifier plus, depending on the
+ * device's capabilities, linked FilterMaintenance / AirQualitySensor /
+ * CarbonDioxideSensor / HumiditySensor services (and an optional Quiet switch).
  */
 class MolekulePlatformAccessory {
     constructor(platform, accessory, config, log, requester) {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q;
         this.platform = platform;
         this.accessory = accessory;
         this.config = config;
         this.log = log;
         this.requester = requester;
-        /**
-         * These are just used to create a working example
-         * You should implement your own code to track the state of your accessory
-         */
-        this.maxSpeed = (_b = (_a = this.accessory.context.device.capabilities) === null || _a === void 0 ? void 0 : _a.MaxFanSpeed) !== null && _b !== void 0 ? _b : 6; //defaults to max speed of 6 if device not in JSON
+        this.maxSpeed = this.accessory.context.device.capabilities?.MaxFanSpeed ?? 6; //defaults to max speed of 6 if device not in JSON
         this.state = {
-            state: 0,
+            state: 0, //https://developers.homebridge.io/#/characteristic/CurrentAirPurifierState
             Speed: 0,
             Filter: 100,
             On: 0,
             auto: 0,
+            silent: 0,
             airQuality: 0,
         };
         this.aqiClass = new aqiReport_1.aqiReport(this.requester);
+        const C = this.platform.Characteristic;
+        const S = this.platform.Service;
+        const name = accessory.context.device.name;
+        const aq = this.accessory.context.device.capabilities?.AirQualityMonitor ?? 0;
+        // HomeKit's FirmwareRevision only accepts up to three numeric components
+        // (major.minor.revision). Molekule reports four (e.g. "9.4.32.3"), which the
+        // Home app rejects and renders as "0.0" — trim to the first three.
+        const firmware = String(accessory.context.device.firmwareVersion ?? "")
+            .split(".")
+            .slice(0, 3)
+            .join(".") || "0.0.0";
         // set accessory information
         this.accessory
-            .getService(this.platform.Service.AccessoryInformation)
-            .setCharacteristic(this.platform.Characteristic.Manufacturer, "Molekule")
-            .setCharacteristic(this.platform.Characteristic.Model, accessory.context.device.model)
-            .setCharacteristic(this.platform.Characteristic.SerialNumber, accessory.context.device.serialNumber)
-            .setCharacteristic(this.platform.Characteristic.FirmwareRevision, accessory.context.device.firmwareVersion);
-        // clear the AirPurifier service if it exists, and create a new AirPurifier service
-        // you can create multiple services for each accessory
-        // clearing needed to simplify handling of service split function.
-        if ((_c = this.accessory.getService(this.platform.Service.AirPurifier)) !== null && _c !== void 0 ? _c : false) {
-            this.accessory.removeService(this.accessory.getService(this.platform.Service.AirPurifier));
-        }
-        this.service = this.accessory.addService(this.platform.Service.AirPurifier);
-        // set the service name, this is what is displayed as the default name on the Home app
-        // in this example we are using the name we stored in the `accessory.context` in the `discoverDevices` method.
-        this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.name);
-        // each service must implement at-minimum the "required characteristics" for the given service type
-        // see https://developers.homebridge.io/#/service/AirPurifier
-        // register handlers for the On/Off Characteristic
+            .getService(S.AccessoryInformation)
+            .setCharacteristic(C.Manufacturer, "Molekule")
+            .setCharacteristic(C.Model, accessory.context.device.model)
+            .setCharacteristic(C.SerialNumber, accessory.context.device.serialNumber)
+            .setCharacteristic(C.FirmwareRevision, firmware);
+        // Recreate the AirPurifier service fresh each launch so capability changes
+        // (and stale characteristics from older plugin versions) are cleared.
+        const oldPurifier = this.accessory.getService(S.AirPurifier);
+        if (oldPurifier)
+            this.accessory.removeService(oldPurifier);
+        this.service = this.accessory.addService(S.AirPurifier);
+        this.service.setCharacteristic(C.Name, name);
         this.service
-            .getCharacteristic(this.platform.Characteristic.Active)
-            .onSet(this.handleActiveSet.bind(this)) // SET - bind to the `handleActiveSet` method below
-            .onGet(this.handleActiveGet.bind(this)); // GET - bind to the `handleActiveGet` method below
-        // register handlers for the CurrentAirPurifierState Characteristic
+            .getCharacteristic(C.Active)
+            .onSet(this.handleActiveSet.bind(this))
+            .onGet(this.handleActiveGet.bind(this));
         this.service
-            .getCharacteristic(this.platform.Characteristic.CurrentAirPurifierState)
-            .onGet(this.getState.bind(this)); // GET - bind to the `getState` method below
-        // register handlers for the TargetAirPurifierState Characteristic
-        if ((_e = (_d = this.accessory.context.device.capabilities) === null || _d === void 0 ? void 0 : _d.AutoFunctionality) !== null && _e !== void 0 ? _e : false) {
+            .getCharacteristic(C.CurrentAirPurifierState)
+            .onGet(this.getState.bind(this));
+        if (this.accessory.context.device.capabilities?.AutoFunctionality ?? false) {
             this.service
-                .getCharacteristic(this.platform.Characteristic.TargetAirPurifierState)
+                .getCharacteristic(C.TargetAirPurifierState)
                 .onSet(this.handleAutoSet.bind(this))
                 .onGet(this.handleAutoGet.bind(this));
         }
         this.service
-            .getCharacteristic(this.platform.Characteristic.RotationSpeed)
+            .getCharacteristic(C.RotationSpeed)
             .onSet(this.setSpeed.bind(this))
             .onGet(this.getSpeed.bind(this));
-        this.service
-            .getCharacteristic(this.platform.Characteristic.FilterChangeIndication)
+        // FilterChangeIndication / FilterLifeLevel belong to FilterMaintenance, not
+        // AirPurifier — expose them on a linked FilterMaintenance service.
+        this.filterService = this.linkSensor(this.accessory.getService(S.FilterMaintenance) ||
+            this.accessory.addService(S.FilterMaintenance));
+        this.filterService
+            .getCharacteristic(C.FilterChangeIndication)
             .onGet(this.getFilterChange.bind(this));
-        this.service
-            .getCharacteristic(this.platform.Characteristic.FilterLifeLevel)
+        this.filterService
+            .getCharacteristic(C.FilterLifeLevel)
             .onGet(this.getFilterStatus.bind(this));
-        this.aqiService = this.service;
-        this.humidityService = this.service;
-        if (((_f = this.config.AQIseparate) !== null && _f !== void 0 ? _f : false) && ((_h = (_g = this.accessory.context.device.capabilities) === null || _g === void 0 ? void 0 : _g.AirQualityMonitor) !== null && _h !== void 0 ? _h : false)) {
-            this.aqiService = this.accessory.getService(this.platform.Service.AirQualitySensor) ||
-                this.accessory.addService(this.platform.Service.AirQualitySensor);
-        }
-        else if ((_k = (_j = this.accessory.context.device.capabilities) === null || _j === void 0 ? void 0 : _j.AirQualityMonitor) !== null && _k !== void 0 ? _k : false) {
-            if ((_l = this.accessory.getService(this.platform.Service.AirQualitySensor)) !== null && _l !== void 0 ? _l : false) {
-                this.accessory.removeService(this.accessory.getService(this.platform.Service.AirQualitySensor));
+        // Air-quality data lives on its own sensor services (never on AirPurifier,
+        // where these characteristics are not permitted).
+        if (aq >= 1) {
+            this.aqiService = this.linkSensor(this.accessory.getService(S.AirQualitySensor) ||
+                this.accessory.addService(S.AirQualitySensor, name + " Air Quality"), name + " Air Quality");
+            this.aqiService.getCharacteristic(C.AirQuality).onGet(this.getAirQuality.bind(this));
+            // Pre-declare the optional characteristics we publish so HomeKit advertises
+            // them from the start rather than on first update.
+            this.aqiService.getCharacteristic(C.PM2_5Density);
+            this.aqiService.getCharacteristic(C.StatusActive);
+            this.aqiService.getCharacteristic(C.StatusFault);
+            if (aq === 1) {
+                this.aqiService.getCharacteristic(C.PM10Density);
+                this.aqiService.getCharacteristic(C.VOCDensity);
             }
-            if ((_m = this.accessory.getService(this.platform.Service.HumiditySensor)) !== null && _m !== void 0 ? _m : false) {
-                this.accessory.removeService(this.accessory.getService(this.platform.Service.HumiditySensor));
-            }
         }
-        switch ((_p = (_o = this.accessory.context.device.capabilities) === null || _o === void 0 ? void 0 : _o.AirQualityMonitor) !== null && _p !== void 0 ? _p : 0) {
-            case 0:
-                break;
-            case 1:
-                this.aqiService
-                    .getCharacteristic(this.platform.Characteristic.AirQuality)
-                    .onGet(this.getAirQuality.bind(this));
-                this.aqiService.getCharacteristic(this.platform.Characteristic.PM2_5Density);
-                this.aqiService.getCharacteristic(this.platform.Characteristic.PM10Density);
-                this.aqiService.getCharacteristic(this.platform.Characteristic.CarbonDioxideLevel);
-                this.aqiService.getCharacteristic(this.platform.Characteristic.VOCDensity);
-                if ((_q = this.config.AQIseparate) !== null && _q !== void 0 ? _q : false) {
-                    this.humidityService = this.accessory.getService(this.platform.Service.HumiditySensor) ||
-                        this.accessory.addService(this.platform.Service.HumiditySensor);
-                }
-                this.humidityService.getCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity);
-                break;
-            case 2:
-                this.aqiService
-                    .getCharacteristic(this.platform.Characteristic.AirQuality)
-                    .onGet(this.getAirQuality.bind(this));
-                this.aqiService.getCharacteristic(this.platform.Characteristic.PM2_5Density);
+        else {
+            this.removeService(S.AirQualitySensor);
         }
-        /**
-         * Creating multiple services of the same type.
-         *
-         * To avoid "Cannot add a Service with the same UUID another Service without also defining a unique 'subtype' property." error,
-         * when creating multiple services of the same type, you need to use the following syntax to specify a name and subtype id:
-         * this.accessory.getService('NAME') || this.accessory.addService(this.platform.Service.Lightbulb, 'NAME', 'USER_DEFINED_SUBTYPE_ID');
-         *
-         * The USER_DEFINED_SUBTYPE must be unique to the platform accessory (if you platform exposes multiple accessories, each accessory
-         * can use the same sub type id.)
-         */
+        // CO2 and humidity are only reported by the full-sensor devices (Air Pro).
+        if (aq === 1) {
+            this.co2Service = this.linkSensor(this.accessory.getService(S.CarbonDioxideSensor) ||
+                this.accessory.addService(S.CarbonDioxideSensor, name + " CO2"), name + " CO2");
+            this.co2Service.getCharacteristic(C.CarbonDioxideLevel);
+            this.co2Service.getCharacteristic(C.StatusActive);
+            this.co2Service.getCharacteristic(C.StatusFault);
+            this.humidityService = this.linkSensor(this.accessory.getService(S.HumiditySensor) ||
+                this.accessory.addService(S.HumiditySensor, name + " Humidity"), name + " Humidity");
+            this.humidityService.getCharacteristic(C.StatusActive);
+            this.humidityService.getCharacteristic(C.StatusFault);
+        }
+        else {
+            this.removeService(S.CarbonDioxideSensor);
+            this.removeService(S.HumiditySensor);
+        }
+        // Optional Quiet switch for Air Pro (silent auto). Off by default to avoid
+        // cluttering devices that do not benefit from it.
+        const hasSilent = (this.accessory.context.device.capabilities?.AutoFunctionality ?? 0) === 2;
+        if (hasSilent && (this.config.quietMode ?? false)) {
+            this.quietSwitch =
+                this.accessory.getServiceById(S.Switch, "quiet") ||
+                    this.accessory.addService(S.Switch, name + " Quiet", "quiet");
+            this.service.addLinkedService(this.quietSwitch);
+            this.quietSwitch
+                .getCharacteristic(C.On)
+                .onGet(() => !!this.state.silent)
+                .onSet(this.setQuiet.bind(this));
+        }
+        else {
+            const existing = this.accessory.getServiceById(S.Switch, "quiet");
+            if (existing)
+                this.accessory.removeService(existing);
+        }
+    }
+    /** Name a sensor service and link it to the AirPurifier. */
+    linkSensor(svc, name) {
+        if (name)
+            svc.setCharacteristic(this.platform.Characteristic.Name, name);
+        this.service.addLinkedService(svc);
+        return svc;
+    }
+    removeService(type) {
+        const svc = this.accessory.getService(type);
+        if (svc)
+            this.accessory.removeService(svc);
+    }
+    /** Map Molekule's coarse aqi label to a HomeKit AirQuality level. */
+    aqiFromLabel(label) {
+        const { AirQuality } = this.platform.Characteristic;
+        switch (label) {
+            case "good":
+                return AirQuality.EXCELLENT;
+            case "moderate":
+                return AirQuality.FAIR;
+            case "bad":
+                return AirQuality.INFERIOR;
+            case "very bad":
+                return AirQuality.POOR;
+            default:
+                return AirQuality.UNKNOWN;
+        }
+    }
+    /** Derive a finer HomeKit AirQuality level from PM2.5 (µg/m³, EPA breakpoints). */
+    aqiFromPm25(pm) {
+        const { AirQuality } = this.platform.Characteristic;
+        if (pm < 0)
+            return AirQuality.UNKNOWN;
+        if (pm <= 12)
+            return AirQuality.EXCELLENT;
+        if (pm <= 35.4)
+            return AirQuality.GOOD;
+        if (pm <= 55.4)
+            return AirQuality.FAIR;
+        if (pm <= 150.4)
+            return AirQuality.INFERIOR;
+        return AirQuality.POOR;
+    }
+    /** Reflect online/offline on the sensor services via StatusActive/StatusFault. */
+    setSensorStatus(online) {
+        const { StatusActive, StatusFault } = this.platform.Characteristic;
+        const fault = online
+            ? StatusFault.NO_FAULT
+            : StatusFault.GENERAL_FAULT;
+        for (const svc of [this.aqiService, this.co2Service, this.humidityService]) {
+            svc?.updateCharacteristic(StatusActive, online);
+            svc?.updateCharacteristic(StatusFault, fault);
+        }
     }
     /**
-     * Handle "SET" requests from HomeKit
-     * These are sent when the user changes the state of an accessory, for example, turning on a Light bulb.
+     * Refresh cached state from a shared device-list response and push the new
+     * values to HomeKit. Called by the platform's poll loop — HomeKit getters
+     * themselves just return the cached state so they stay fast.
      */
-    async updateAirQuality() {
-        var _a, _b, _c, _d, _e, _f, _g, _h;
-        let AQIstats;
-        try {
-            AQIstats = await this.aqiClass.getAqi(this.accessory.context.device.serialNumber);
-        }
-        catch (e) {
-            this.log.error(e);
+    async updateFromQuery(query) {
+        const C = this.platform.Characteristic;
+        const device = query.content?.find((d) => d.serialNumber === this.accessory.context.device.serialNumber);
+        if (!device) {
+            this.accessory.context.device.online = "false";
+            this.setSensorStatus(false);
             return;
         }
-        this.log.debug(this.accessory.context.device.name, AQIstats);
-        switch ((_b = (_a = this.accessory.context.device.capabilities) === null || _a === void 0 ? void 0 : _a.AirQualityMonitor) !== null && _b !== void 0 ? _b : 0) {
-            case 0:
-                break;
-            case 1:
-                this.aqiService.updateCharacteristic(this.platform.Characteristic.PM2_5Density, (_c = AQIstats["PM2_5"]) !== null && _c !== void 0 ? _c : 0);
-                this.aqiService.updateCharacteristic(this.platform.Characteristic.PM10Density, (_d = AQIstats["PM10"]) !== null && _d !== void 0 ? _d : 0);
-                this.humidityService.updateCharacteristic(this.platform.Characteristic.CurrentRelativeHumidity, (_e = AQIstats["RH"]) !== null && _e !== void 0 ? _e : 0);
-                this.aqiService.updateCharacteristic(this.platform.Characteristic.CarbonDioxideLevel, (_f = AQIstats["CO2"]) !== null && _f !== void 0 ? _f : 0);
-                this.aqiService.updateCharacteristic(this.platform.Characteristic.VOCDensity, (_g = AQIstats["TVOC"]) !== null && _g !== void 0 ? _g : 0);
-                break;
-            case 2:
-                this.aqiService.updateCharacteristic(this.platform.Characteristic.PM2_5Density, (_h = AQIstats["PM2_5"]) !== null && _h !== void 0 ? _h : 0);
+        device.capabilities = this.accessory.context.device.capabilities;
+        this.accessory.context.device = device;
+        const online = device.online === "true";
+        this.state.Speed = (+device.fanspeed * 100) / this.maxSpeed;
+        this.state.Filter = +device.pecoFilter;
+        this.state.auto = +(device.mode === "smart");
+        this.state.silent = +(device.silent === "1");
+        if (device.mode !== "off") {
+            this.state.On = C.Active.ACTIVE;
+            this.state.state = C.CurrentAirPurifierState.PURIFYING_AIR;
         }
+        else {
+            this.state.On = C.Active.INACTIVE;
+            this.state.state = C.CurrentAirPurifierState.INACTIVE;
+        }
+        // Coarse label-based AQI; overridden by PM2.5 in updateAirQuality when a
+        // sensor reading is available.
+        this.state.airQuality = this.aqiFromLabel(device.aqi);
+        if (!online)
+            this.log.warn(device.name + " was reported offline by the Molekule API.");
+        this.service.updateCharacteristic(C.RotationSpeed, this.state.Speed);
+        this.service.updateCharacteristic(C.CurrentAirPurifierState, this.state.state);
+        this.service.updateCharacteristic(C.Active, this.state.On);
+        if ((device.capabilities?.AutoFunctionality ?? 0) !== 0)
+            this.service.updateCharacteristic(C.TargetAirPurifierState, this.state.auto);
+        this.filterService?.updateCharacteristic(C.FilterLifeLevel, this.state.Filter);
+        this.filterService?.updateCharacteristic(C.FilterChangeIndication, this.getFilterChange());
+        this.quietSwitch?.updateCharacteristic(C.On, !!this.state.silent);
+        this.setSensorStatus(online);
+        // Air-quality values come from a separate per-device endpoint.
+        if (this.aqiService)
+            await this.updateAirQuality();
+        this.log.debug(device.name, this.state);
     }
-    getAirQuality() {
-        this.updateAirQuality();
-        return this.state.airQuality;
+    /** Fetch and publish the latest air-quality sensor readings. */
+    async updateAirQuality() {
+        const C = this.platform.Characteristic;
+        let stats;
+        try {
+            stats = await this.aqiClass.getAqi(this.accessory.context.device.serialNumber);
+        }
+        catch (e) {
+            this.log.debug(this.accessory.context.device.name, "AQI fetch failed:", e);
+            return;
+        }
+        this.log.debug(this.accessory.context.device.name, stats);
+        if (this.aqiService) {
+            const pm25 = stats["PM2_5"] ?? 0;
+            this.aqiService.updateCharacteristic(C.PM2_5Density, pm25);
+            this.state.airQuality = this.aqiFromPm25(pm25);
+            this.aqiService.updateCharacteristic(C.AirQuality, this.state.airQuality);
+            // PM10 / VOC are only present on the full-sensor devices.
+            if ((this.accessory.context.device.capabilities?.AirQualityMonitor ?? 0) === 1) {
+                this.aqiService.updateCharacteristic(C.PM10Density, stats["PM10"] ?? 0);
+                this.aqiService.updateCharacteristic(C.VOCDensity, stats["TVOC"] ?? 0);
+            }
+        }
+        if (this.co2Service) {
+            const co2 = stats["CO2"] ?? 0;
+            this.co2Service.updateCharacteristic(C.CarbonDioxideLevel, co2);
+            this.co2Service.updateCharacteristic(C.CarbonDioxideDetected, co2 > Number(this.config.co2Threshold ?? 1000)
+                ? C.CarbonDioxideDetected.CO2_LEVELS_ABNORMAL
+                : C.CarbonDioxideDetected.CO2_LEVELS_NORMAL);
+        }
+        this.humidityService?.updateCharacteristic(C.CurrentRelativeHumidity, stats["RH"] ?? 0);
     }
     async handleActiveSet(value) {
-        // implement your own code to turn your device on/off
-        let data = '"on"}';
-        if (!value)
-            data = '"off"}';
-        const response = await this.requester.httpCall("POST", this.accessory.context.device.serialNumber + "/actions/set-power-status", '{"status":' + data, 1);
+        const { CurrentAirPurifierState, Active } = this.platform.Characteristic;
+        const response = await this.requester.httpCall("POST", this.accessory.context.device.serialNumber + "/actions/set-power-status", JSON.stringify({ status: value ? "on" : "off" }), 1);
         if (response.status === 204) {
-            this.platform.log.info("Attempted to set: " +
-                value +
-                " state on device: " +
-                this.accessory.context.device.name +
-                " Server Reply: " +
-                JSON.stringify(response));
-            this.service.updateCharacteristic(this.platform.Characteristic.Active, value);
+            this.platform.log.info(this.accessory.context.device.name + " power set ->", value ? "on" : "off");
+            this.service.updateCharacteristic(Active, value);
             if (value) {
-                this.service.updateCharacteristic(this.platform.Characteristic.CurrentAirPurifierState, 2);
-                this.state.state = 2;
-                this.state.On = 1;
+                this.service.updateCharacteristic(CurrentAirPurifierState, CurrentAirPurifierState.PURIFYING_AIR);
+                this.state.state = CurrentAirPurifierState.PURIFYING_AIR;
+                this.state.On = Active.ACTIVE;
             }
             else {
-                this.service.updateCharacteristic(this.platform.Characteristic.CurrentAirPurifierState, 0);
-                this.state.On = 0;
+                this.service.updateCharacteristic(CurrentAirPurifierState, CurrentAirPurifierState.INACTIVE);
+                this.state.On = Active.INACTIVE;
             }
         }
-        MolekulePlatformAccessory.query.change = true;
     }
     /**
-     * Handle the "GET" requests from HomeKit
-     * These are sent when HomeKit wants to know the current state of the accessory, for example, checking if a Light bulb is on.
-     *
-     * GET requests should return as fast as possbile. A long delay here will result in
-     * HomeKit being unresponsive and a bad user experience() in general.
-     *
-     * If your device takes time to respond you should update the status of your device
-     * asynchronously instead using the `updateCharacteristic` method instead.
-     * @example
-     * this.service.updateCharacteristic(this.platform.Characteristic.On, true)
+     * GET handlers return cached state so they respond instantly; the platform's
+     * poll loop keeps that state fresh and pushes updates via updateCharacteristic.
      */
     handleActiveGet() {
-        this.updateStates();
-        // Check if the device is online
-        const isDeviceOnline = this.accessory.context.device.online === 'true';
-        if (!isDeviceOnline) {
-            this.log.warn(this.accessory.context.device.name, "sent offline status to homekit");
+        if (this.accessory.context.device.online !== "true") {
+            this.log.warn(this.accessory.context.device.name, "is offline");
             throw new this.platform.api.hap.HapStatusError(-70402 /* this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE */);
         }
         return this.state.On;
-        // if you need to return an error to show the device as "Not Responding" in the Home app:
-        // throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     }
     getState() {
         return this.state.state;
     }
     async handleAutoSet(value) {
-        var _a, _b, _c;
+        const { TargetAirPurifierState, RotationSpeed } = this.platform.Characteristic;
         let responseCode;
         const clamp = Math.round(Math.min(Math.max(this.state.Speed / (100 / this.maxSpeed), 1), this.maxSpeed));
-        switch ((_b = (_a = this.accessory.context.device.capabilities) === null || _a === void 0 ? void 0 : _a.AutoFunctionality) !== null && _b !== void 0 ? _b : 0) {
+        switch (this.accessory.context.device.capabilities?.AutoFunctionality ?? 0) {
             case 1:
-                if (value === 1)
+                if (value === TargetAirPurifierState.AUTO)
                     responseCode = (await this.requester.httpCall("POST", this.accessory.context.device.serialNumber +
                         "/actions/enable-smart-mode", "", 1)).status;
                 else {
                     responseCode = (await this.requester.httpCall("POST", this.accessory.context.device.serialNumber +
-                        "/actions/set-fan-speed", '{"fanSpeed": ' + clamp + "}", 1)).status;
-                    this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.state.Speed);
+                        "/actions/set-fan-speed", JSON.stringify({ fanSpeed: clamp }), 1)).status;
+                    this.service.updateCharacteristic(RotationSpeed, this.state.Speed);
                 }
                 break;
             case 2:
-                if (value === 1)
+                if (value === TargetAirPurifierState.AUTO)
                     responseCode = (await this.requester.httpCall("POST", this.accessory.context.device.serialNumber +
-                        "/actions/enable-smart-mode", '{"silent": "' + +((_c = this.config.silentAuto) !== null && _c !== void 0 ? _c : 0) + '"}', 1)).status;
+                        "/actions/enable-smart-mode", JSON.stringify({ silent: String(Number(this.config.silentAuto ?? false)) }), 1)).status;
                 else {
                     responseCode = (await this.requester.httpCall("POST", this.accessory.context.device.serialNumber +
-                        "/actions/set-fan-speed", '{"fanSpeed": ' + clamp + "}", 1)).status;
-                    this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.state.Speed);
+                        "/actions/set-fan-speed", JSON.stringify({ fanSpeed: clamp }), 1)).status;
+                    this.service.updateCharacteristic(RotationSpeed, this.state.Speed);
                 }
                 break;
             default:
                 this.log.error("Homekit attempted to set auto/manual (" +
                     value +
                     ") state but your device doesn't support it ☹");
-                this.service.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState, 0);
+                this.service.updateCharacteristic(TargetAirPurifierState, TargetAirPurifierState.MANUAL);
                 break;
         }
         if (responseCode === 204 || responseCode === 200) {
             this.state.auto = value;
-            this.service.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState, this.state.auto);
+            this.service.updateCharacteristic(TargetAirPurifierState, this.state.auto);
             this.platform.log.info(this.accessory.context.device.name, "set", value ? "auto" : "manual", "state.");
-            MolekulePlatformAccessory.query.change = true;
         }
         else {
             this.log.error(this.accessory.context.device.name, "failed to set auto/manual state");
-            this.service.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState, this.state.auto);
+            this.service.updateCharacteristic(TargetAirPurifierState, this.state.auto);
         }
     }
     handleAutoGet() {
         return this.state.auto;
     }
-    /**
-     * Handle "SET" requests from HomeKit
-     * These are sent when the user changes the state of an accessory, for example, changing the speed
-     */
+    /** Toggle Air Pro "silent" auto. Enabling silent forces the device into Auto. */
+    async setQuiet(value) {
+        const { TargetAirPurifierState, On } = this.platform.Characteristic;
+        const response = await this.requester.httpCall("POST", this.accessory.context.device.serialNumber + "/actions/enable-smart-mode", JSON.stringify({ silent: value ? "1" : "0" }), 1);
+        if (response.status === 204 || response.status === 200) {
+            this.state.silent = value ? 1 : 0;
+            this.state.auto = TargetAirPurifierState.AUTO;
+            this.service.updateCharacteristic(TargetAirPurifierState, TargetAirPurifierState.AUTO);
+            this.platform.log.info(this.accessory.context.device.name, "quiet", value ? "on" : "off", "(auto enabled)");
+        }
+        else {
+            this.log.error(this.accessory.context.device.name, "failed to set quiet mode");
+            this.quietSwitch?.updateCharacteristic(On, !!this.state.silent);
+        }
+    }
     async setSpeed(value) {
         const clamp = Math.round(Math.min(Math.max(value / (100 / this.maxSpeed), 1), this.maxSpeed));
-        if ((await this.requester.httpCall("POST", this.accessory.context.device.serialNumber + "/actions/set-fan-speed", '{"fanSpeed": ' + clamp + "}", 1)).status === 204)
+        if ((await this.requester.httpCall("POST", this.accessory.context.device.serialNumber + "/actions/set-fan-speed", JSON.stringify({ fanSpeed: clamp }), 1)).status === 204)
             this.state.Speed = (clamp * 100) / this.maxSpeed;
-        this.platform.log.info(this.accessory.context.device.name + " set speed -> ", '{"fanSpeed":' + clamp + "}");
+        this.platform.log.info(this.accessory.context.device.name + " set speed -> ", JSON.stringify({ fanSpeed: clamp }));
         this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.state.Speed);
-        MolekulePlatformAccessory.query.change = true;
-        this.updateStates();
     }
     getSpeed() {
         return this.state.Speed;
     }
     getFilterChange() {
-        var _a;
-        if ((_a = this.state.Filter > this.config.threshold) !== null && _a !== void 0 ? _a : 10)
-            return 0;
+        const { FilterChangeIndication } = this.platform.Characteristic;
+        if (this.state.Filter > (this.config.threshold ?? 10))
+            return FilterChangeIndication.FILTER_OK;
         else
-            return 1;
+            return FilterChangeIndication.CHANGE_FILTER;
     }
     getFilterStatus() {
         this.platform.log.debug(this.accessory.context.device.name, "Filter State:", this.state.Filter);
         return this.state.Filter;
     }
-    async updateStates() {
-        var _a, _b;
-        if (MolekulePlatformAccessory.query.change ||
-            Date.now() - MolekulePlatformAccessory.query.requestTime > 5000) {
-            const re = await this.requester.httpCall("GET", "", "", 1);
-            MolekulePlatformAccessory.query = await re.json();
-            MolekulePlatformAccessory.query.requestTime = Date.now();
-            MolekulePlatformAccessory.query.change = false;
-        }
-        else
-            this.platform.log.debug("saved a request");
-        if (MolekulePlatformAccessory.query.content === undefined)
-            this.accessory.context.device.online = false;
-        for (let i = 0; i < Object.keys(MolekulePlatformAccessory.query.content).length; i++) {
-            if (MolekulePlatformAccessory.query.content[i].serialNumber ===
-                this.accessory.context.device.serialNumber) {
-                MolekulePlatformAccessory.query.content[i].capabilities = this.accessory.context.device.capabilities;
-                this.accessory.context.device = MolekulePlatformAccessory.query.content[i];
-                this.platform.log.debug(this.accessory.context.device.name, "speed is:", this.accessory.context.device.fanspeed);
-                this.state.Speed =
-                    ((+this.accessory.context.device.fanspeed) *
-                        100) /
-                        this.maxSpeed;
-                this.state.Filter = +this.accessory.context.device.pecoFilter;
-                this.state.auto = +(this.accessory.context.device.mode === "smart"); //+ cast boolean to number
-                this.platform.log.debug(this.accessory.context.device.name, "auto/manual:", this.state.auto ? "auto" : "manual");
-                switch (this.accessory.context.device.aqi) {
-                    case "good":
-                        this.state.airQuality = 1;
-                        break;
-                    case "moderate":
-                        this.state.airQuality = 3;
-                        break;
-                    case "bad":
-                        this.state.airQuality = 4;
-                        break;
-                    case "very bad":
-                        this.state.airQuality = 5;
-                        break;
-                    default:
-                        this.state.airQuality = 0;
-                        break;
-                }
-                if (this.accessory.context.device.online === "false") {
-                    this.platform.log.warn(this.accessory.context.device.name +
-                        " was reported to be offline by the Molekule API.");
-                }
-                if (this.accessory.context.device.mode !== "off") {
-                    this.state.On = 1;
-                    this.state.state = 2;
-                }
-                else {
-                    this.state.On = 0;
-                    this.state.state = 0;
-                }
-                this.log.debug(this.accessory.context.device.name, this.state);
-            }
-        }
-        this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, this.state.Speed);
-        this.service.updateCharacteristic(this.platform.Characteristic.CurrentAirPurifierState, this.state.state);
-        this.service.updateCharacteristic(this.platform.Characteristic.Active, this.state.On);
-        if (((_b = (_a = this.accessory.context.device) === null || _a === void 0 ? void 0 : _a.AutoFunctionality) !== null && _b !== void 0 ? _b : 0) != 0)
-            this.service.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState, this.state.auto);
+    getAirQuality() {
+        return this.state.airQuality;
     }
 }
 exports.MolekulePlatformAccessory = MolekulePlatformAccessory;
-MolekulePlatformAccessory.query = {
-    content: [],
-    requestTime: 0,
-    change: false,
-};
 //# sourceMappingURL=platformAccessory.js.map

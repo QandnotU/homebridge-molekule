@@ -1,4 +1,4 @@
-import {
+import type {
   API,
   DynamicPlatformPlugin,
   Logger,
@@ -14,8 +14,6 @@ import { models } from "./devices.json";
 
 export interface queryResponse {
   content: deviceData[];
-  requestTime: number;
-  change: boolean;
 }
 interface deviceData {
   name: string;
@@ -39,9 +37,10 @@ interface capabilities {
 interface JsonData {
   [deviceName: string]: capabilities;
 }
-let intervalID: NodeJS.Timer;
+let intervalID: NodeJS.Timeout;
 const Models: JsonData = models;
 const refreshInterval = 60; //token refresh interval in minutes
+const defaultPollInterval = 30; //device state poll interval in seconds
 /**
  * HomebridgePlatform
  * This class is the main constructor for your plugin, this is where you should
@@ -53,6 +52,9 @@ export class MolekuleHomebridgePlatform implements DynamicPlatformPlugin {
     this.api.hap.Characteristic;
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
+  // active accessory handlers, driven by the shared poll loop
+  private readonly handlers: MolekulePlatformAccessory[] = [];
+  private pollTimer?: NodeJS.Timeout;
 
   constructor(
     public readonly log: Logger,
@@ -64,10 +66,11 @@ export class MolekuleHomebridgePlatform implements DynamicPlatformPlugin {
     // Dynamic Platform plugins should only register new accessories after this event was fired,
     // in order to ensure they weren't added to homebridge already. This event can also be used
     // to start discovery of new accessories.
-    this.api.on("didFinishLaunching", () => {
+    this.api.on("didFinishLaunching", async () => {
       log.debug("Executed didFinishLaunching callback");
       // run the method to discover / register your devices as accessories
-      this.discoverDevices();
+      await this.discoverDevices();
+      this.startPolling();
       if (!intervalID)
         intervalID = setInterval(
           () => this.requester.refreshIdToken(),
@@ -96,15 +99,15 @@ export class MolekuleHomebridgePlatform implements DynamicPlatformPlugin {
    */
   async discoverDevices() {
     this.log.debug("Discover Devices Called");
-    const response = this.requester.httpCall("GET", "", "", 1);
+    const response = await this.requester.httpCall("GET", "", "", 1);
     // loop over the discovered devices and register each one if it has not already been registered
-    if ((await response).status !== 200) {
+    if (response.status !== 200) {
       this.log.error(
-        "Fatal error, discover devices failed. HTTP Status code: " + (await response).status + " Response: " + JSON.stringify((await response).body),
+        "Fatal error, discover devices failed. HTTP Status code: " + response.status + " Response: " + JSON.stringify(response.body),
       );
       return; //prevent crashes
     }
-    const devicesQuery: queryResponse = await (await response).json();
+    const devicesQuery = (await response.json()) as queryResponse;
     this.log.debug(JSON.stringify(devicesQuery));
     devicesQuery.content.forEach((device: deviceData) => {
       // generate a unique id for the accessory this should be generated from
@@ -136,20 +139,20 @@ export class MolekuleHomebridgePlatform implements DynamicPlatformPlugin {
           existingAccessory.displayName,
         );
 
-        // if you need to update the accessory.context then you should run `api.updatePlatformAccessories`. eg.:
-        // existingAccessory.context.device = device;
-        // this.api.updatePlatformAccessories([existingAccessory]);
-
-        // create the accessory handler for the restored accessory
-        // this is imported from `platformAccessory.ts`
-        existingAccessory.context.device.capabilities = Models[device.model];
+        // Refresh the cached context with the latest data from the API (e.g.
+        // firmware version, name) rather than only patching capabilities, so
+        // stale values persisted by older plugin versions get corrected.
+        device.capabilities = Models[device.model];
+        existingAccessory.context.device = device;
         this.api.updatePlatformAccessories([existingAccessory]);
-        new MolekulePlatformAccessory(
-          this,
-          existingAccessory,
-          this.config,
-          this.log,
-          this.requester,
+        this.handlers.push(
+          new MolekulePlatformAccessory(
+            this,
+            existingAccessory,
+            this.config,
+            this.log,
+            this.requester,
+          ),
         );
 
         // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, eg.:
@@ -169,19 +172,18 @@ export class MolekuleHomebridgePlatform implements DynamicPlatformPlugin {
         if (!device.capabilities) {
           this.log.info("The device", device.name, "is not a known model. Using default values.")
         }
-        if (device.capabilities?.AutoFunctionality ?? false) {
-          device.capabilities.AutoFunctionality = 0;
-        }
         accessory.context.device = device;
 
         // create the accessory handler for the newly create accessory
         // this is imported from `platformAccessory.ts`
-        new MolekulePlatformAccessory(
-          this,
-          accessory,
-          this.config,
-          this.log,
-          this.requester,
+        this.handlers.push(
+          new MolekulePlatformAccessory(
+            this,
+            accessory,
+            this.config,
+            this.log,
+            this.requester,
+          ),
         );
         // link the accessory to your platform
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
@@ -194,8 +196,7 @@ export class MolekuleHomebridgePlatform implements DynamicPlatformPlugin {
         !devicesQuery.content.find(
           (device) =>
             this.api.hap.uuid.generate(device.serialNumber) === accessory.UUID,
-        ) ??
-        true
+        )
       ) {
         this.log.warn("Removing accessory:", accessory.context.device.name);
         this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
@@ -203,5 +204,41 @@ export class MolekuleHomebridgePlatform implements DynamicPlatformPlugin {
         ]);
       }
     });
+  }
+
+  /**
+   * Poll the Molekule API once per interval and push fresh state to every
+   * accessory. HomeKit getters then just return cached state, so a burst of
+   * reads no longer produces a burst of API requests.
+   */
+  private startPolling() {
+    if (this.pollTimer || this.handlers.length === 0) return;
+    const seconds = Math.max(5, Number(this.config.pollInterval ?? defaultPollInterval));
+    this.log.debug("Polling device state every " + seconds + "s");
+    this.poll();
+    this.pollTimer = setInterval(() => this.poll(), seconds * 1000);
+  }
+
+  private async poll() {
+    const response = await this.requester.httpCall("GET", "", "", 1);
+    if (response.status !== 200) {
+      this.log.debug("Poll failed, HTTP status " + response.status);
+      return;
+    }
+    let query: queryResponse;
+    try {
+      query = (await response.json()) as queryResponse;
+    } catch (e) {
+      this.log.debug("Poll response parse failed: " + e);
+      return;
+    }
+    if (!query?.content) return;
+    for (const handler of this.handlers) {
+      try {
+        await handler.updateFromQuery(query);
+      } catch (e) {
+        this.log.debug("Failed to update accessory: " + e);
+      }
+    }
   }
 }
