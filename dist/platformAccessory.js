@@ -68,8 +68,11 @@ class MolekulePlatformAccessory {
                 .onSet(this.handleAutoSet.bind(this))
                 .onGet(this.handleAutoGet.bind(this));
         }
+        // Snap the slider to the device's discrete speeds (e.g. 6 steps on Air Pro)
+        // so it lands on real speeds instead of any percent and rounding back.
         this.service
             .getCharacteristic(C.RotationSpeed)
+            .setProps({ minStep: 100 / this.maxSpeed })
             .onSet(this.setSpeed.bind(this))
             .onGet(this.getSpeed.bind(this));
         // FilterChangeIndication / FilterLifeLevel belong to FilterMaintenance, not
