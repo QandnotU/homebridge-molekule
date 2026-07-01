@@ -1,21 +1,10 @@
-<div align="center">
-
 <img src="branding/molekule-icon.png" alt="Molekule Logo" width="125" />
 
-# Homebridge Molekule
-
-<a href="https://www.npmjs.com/package/@qandnotu/homebridge-molekule"><img title="npm version" src="https://img.shields.io/npm/v/@qandnotu/homebridge-molekule?label=npm"></a>
-<a href="https://www.npmjs.com/package/@qandnotu/homebridge-molekule"><img title="npm downloads" src="https://img.shields.io/npm/dt/@qandnotu/homebridge-molekule?label=downloads"></a>
-<img title="homebridge" src="https://img.shields.io/badge/Homebridge-v1%20%26%20v2-blue">
 <!-- Once verified, add:
 <a href="https://github.com/homebridge/homebridge/wiki/Verified-Plugins"><img title="verified-by-homebridge" src="https://img.shields.io/badge/homebridge-verified-blueviolet?color=%23491F59&style=flat"></a>
 -->
 
-<img src="branding/molekule-hero.png" alt="Molekule Air Purifiers" width="480" />
-
 **A Homebridge plugin for Molekule air purifiers.**
-
-</div>
 
 Exposes your Molekule devices to Apple HomeKit — power, fan speed, Auto (smart) mode, filter life, and air-quality readings — so you can control and automate them from the Home app and Siri:
 
