@@ -55,6 +55,8 @@ It should be configurable in plugin settings using homebridge-ui-x, if not, add 
 - `pollInterval` how often (seconds, default 30) device state is refreshed from the Molekule API — HomeKit changes apply instantly; this governs how fast changes made elsewhere (physical controls, the app, air-quality drift) show up
 
 # v1.5.0
+- HomeKit Model now shows the marketing name (e.g. "Molekule Air Pro") instead of the internal codename ("Sequoia Basic")
+- AirQuality now reflects the worse of the PM2.5-derived level and Molekule's own air-quality label (PM2.5 alone read "Excellent" while VOC/CO₂ were elevated)
 - Homebridge v2 support (now requires Node.js 22 or 24)
 - air quality, PM2.5/PM10/VOC, **CO₂ (new dedicated sensor)** and humidity are now exposed on their correct HomeKit sensor services — fixes the "characteristic not in required or optional" warnings
 - filter status moved to a proper linked FilterMaintenance service

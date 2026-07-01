@@ -42,7 +42,10 @@ class MolekulePlatformAccessory {
         this.accessory
             .getService(S.AccessoryInformation)
             .setCharacteristic(C.Manufacturer, "Molekule")
-            .setCharacteristic(C.Model, accessory.context.device.model)
+            // Prefer the marketing product name (e.g. "Molekule Air Pro") over the
+            // internal model codename (e.g. "Sequoia Basic") for the HomeKit tile.
+            .setCharacteristic(C.Model, accessory.context.device.subProduct?.name ||
+            accessory.context.device.model)
             .setCharacteristic(C.SerialNumber, accessory.context.device.serialNumber)
             .setCharacteristic(C.FirmwareRevision, firmware);
         // Recreate the AirPurifier service fresh each launch so capability changes
@@ -249,7 +252,10 @@ class MolekulePlatformAccessory {
         if (this.aqiService) {
             const pm25 = stats["PM2_5"] ?? 0;
             this.aqiService.updateCharacteristic(C.PM2_5Density, pm25);
-            this.state.airQuality = this.aqiFromPm25(pm25);
+            // Molekule frequently reports PM2.5 = 0 while VOC/CO2 are elevated, so a
+            // PM2.5-only score would read "Excellent" when the device says otherwise.
+            // Report the worse of the PM2.5-derived level and Molekule's own aqi label.
+            this.state.airQuality = Math.max(this.aqiFromPm25(pm25), this.aqiFromLabel(this.accessory.context.device.aqi));
             this.aqiService.updateCharacteristic(C.AirQuality, this.state.airQuality);
             // PM10 / VOC are only present on the full-sensor devices.
             if ((this.accessory.context.device.capabilities?.AirQualityMonitor ?? 0) === 1) {
