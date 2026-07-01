@@ -165,6 +165,13 @@ export class MolekulePlatformAccessory {
         this.accessory.getServiceById(S.Switch, "quiet") ||
         this.accessory.addService(S.Switch, "Quiet Mode", "quiet");
       this.quietSwitch.setCharacteristic(C.Name, "Quiet Mode");
+      // Apple Home labels a switch tile with the accessory name (e.g. "Lounge")
+      // unless the service carries a ConfiguredName. Seed it once — HomeKit
+      // persists any later rename by the user, so we don't overwrite it.
+      if (!this.quietSwitch.testCharacteristic(C.ConfiguredName)) {
+        this.quietSwitch.addOptionalCharacteristic(C.ConfiguredName);
+        this.quietSwitch.setCharacteristic(C.ConfiguredName, "Quiet Mode");
+      }
       this.service.addLinkedService(this.quietSwitch);
       this.quietSwitch
         .getCharacteristic(C.On)

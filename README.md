@@ -55,7 +55,7 @@ It should be configurable in plugin settings using homebridge-ui-x, if not, add 
 - `pollInterval` how often (seconds, default 30) device state is refreshed from the Molekule API — HomeKit changes apply instantly; this governs how fast changes made elsewhere (physical controls, the app, air-quality drift) show up
 
 # v1.5.0
-- optional **Quiet Mode** switch on the purifier for Air Pro (`quietMode`) — grouped with the device, Ungroup in Home for its own tile
+- optional **Quiet Mode** switch on the purifier for Air Pro (`quietMode`) — grouped with the device, Ungroup in Home for its own tile; its tile is labelled "Quiet Mode" (via ConfiguredName)
 - HomeKit Model now shows the marketing name (e.g. "Molekule Air Pro") instead of the internal codename ("Sequoia Basic")
 - AirQuality now reflects the worse of the PM2.5-derived level and Molekule's own air-quality label (PM2.5 alone read "Excellent" while VOC/CO₂ were elevated)
 - Homebridge v2 support (now requires Node.js 22 or 24)
