@@ -77,11 +77,16 @@ export class MolekuleHomebridgePlatform implements DynamicPlatformPlugin {
         return;
       }
       // run the method to discover / register your devices as accessories
-      await this.discoverDevices();
+      await this.discoverDevices().catch((e) =>
+        this.log.error("Device discovery failed: " + e),
+      );
       this.startPolling();
       if (!intervalID)
         intervalID = setInterval(
-          () => this.requester.refreshIdToken(),
+          () =>
+            this.requester
+              .refreshIdToken()
+              .catch((e) => this.log.debug("Token refresh failed: " + e)),
           refreshInterval * 60 * 1000,
         );
     });
@@ -115,42 +120,58 @@ export class MolekuleHomebridgePlatform implements DynamicPlatformPlugin {
       );
       return; //prevent crashes
     }
-    const devicesQuery = (await response.json()) as queryResponse;
+    let devicesQuery: queryResponse;
+    try {
+      devicesQuery = (await response.json()) as queryResponse;
+    } catch (e) {
+      this.log.error("Failed to parse the device list response: " + e);
+      return;
+    }
+    if (!devicesQuery?.content) {
+      this.log.error("Device list response had no 'content'; skipping discovery.");
+      return;
+    }
     this.log.debug(JSON.stringify(devicesQuery));
 
     // UUIDs we want to keep this run; anything cached but not listed here is removed.
     const keep = new Set<string>();
 
     devicesQuery.content.forEach((device: deviceData) => {
-      this.log.debug("found device from API: " + JSON.stringify(device));
+      try {
+        this.log.debug("found device from API: " + JSON.stringify(device));
 
-      if (this.config.excludeAirMiniPlus && device.model === "Air Mini Pro") {
-        this.log.info("Excluding Air Mini+ device:", device.name);
-        return; // not kept -> removed by the cleanup pass below
-      }
+        if (this.config.excludeAirMiniPlus && device.model === "Air Mini Pro") {
+          this.log.info("Excluding Air Mini+ device:", device.name);
+          return; // not kept -> removed by the cleanup pass below
+        }
 
-      device.capabilities = Models[device.model];
-      if (!device.capabilities) {
-        this.log.info(
-          "The device",
-          device.name,
-          "is not a known model. Using default values.",
+        device.capabilities = Models[device.model];
+        if (!device.capabilities) {
+          this.log.info(
+            "The device",
+            device.name,
+            "is not a known model. Using default values.",
+          );
+        }
+
+        // Main air-purifier accessory.
+        const uuid = this.api.hap.uuid.generate(device.serialNumber);
+        keep.add(uuid);
+        const accessory = this.getOrAddAccessory(uuid, device.name, device);
+        this.handlers.push(
+          new MolekulePlatformAccessory(
+            this,
+            accessory,
+            this.config,
+            this.log,
+            this.requester,
+          ),
+        );
+      } catch (e) {
+        this.log.error(
+          "Failed to set up device " + (device?.name ?? "?") + ": " + e,
         );
       }
-
-      // Main air-purifier accessory.
-      const uuid = this.api.hap.uuid.generate(device.serialNumber);
-      keep.add(uuid);
-      const accessory = this.getOrAddAccessory(uuid, device.name, device);
-      this.handlers.push(
-        new MolekulePlatformAccessory(
-          this,
-          accessory,
-          this.config,
-          this.log,
-          this.requester,
-        ),
-      );
     });
 
     // Remove any cached accessories that are no longer wanted (device gone,
