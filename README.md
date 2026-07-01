@@ -4,8 +4,8 @@
 <span align="center">
   
 # homebridge-molekule
-<a href="https://github.com/QandnotU/homebridge-molekule/releases/latest"><img title="latest release" src="https://img.shields.io/github/v/release/QandnotU/homebridge-molekule?include_prereleases&sort=semver&label=release"></a>
-<a href="https://github.com/QandnotU/homebridge-molekule/releases"><img title="downloads" src="https://img.shields.io/github/downloads/QandnotU/homebridge-molekule/total?label=downloads"></a>
+<a href="https://www.npmjs.com/package/@qandnotu/homebridge-molekule"><img title="npm version" src="https://img.shields.io/npm/v/@qandnotu/homebridge-molekule?label=npm"></a>
+<a href="https://www.npmjs.com/package/@qandnotu/homebridge-molekule"><img title="npm downloads" src="https://img.shields.io/npm/dt/@qandnotu/homebridge-molekule?label=downloads"></a>
 <img title="homebridge" src="https://img.shields.io/badge/Homebridge-v1%20%26%20v2-blue">
 </span>
 
@@ -25,7 +25,7 @@ Search for Molekule under Plugins in the Homebridge UI.
 Or, copy and paste the following into a terminal
 
 ```bash
-npm -g i homebridge-molekule
+npm -g i @qandnotu/homebridge-molekule
 ```
 
 ## Configuration

@@ -1,16 +1,19 @@
 {
   "private": false,
   "displayName": "Homebridge Molekule",
-  "name": "homebridge-molekule",
-  "version": "1.5.0-alpha.6",
+  "name": "@qandnotu/homebridge-molekule",
+  "version": "1.5.0",
   "description": "A Plugin for Molekule Air Purifiers for use with Homebridge.",
   "license": "Unlicense",
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
-    "url": "git://github.com/csirikak/homebridge-molekule.git"
+    "url": "git+https://github.com/QandnotU/homebridge-molekule.git"
   },
   "bugs": {
-    "url": "https://github.com/csirikak/homebridge-molekule/issues"
+    "url": "https://github.com/QandnotU/homebridge-molekule/issues"
   },
   "engines": {
     "node": "^22.12.0 || ^24.0.0",
