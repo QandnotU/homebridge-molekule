@@ -46,10 +46,10 @@
         "description": "When setting Auto/Manual state, use Silent or Standard auto state on Air Pro devices?"
       },
       "quietMode": {
-        "title": "Expose Quiet switch",
+        "title": "Expose Quiet Mode switch",
         "type": "boolean",
         "default": false,
-        "description": "Add a 'Quiet' switch for Air Pro devices. Turning it on enables Auto + Quiet (silent) mode."
+        "description": "Add a separate 'Quiet Mode' switch accessory for Air Pro devices. Turning it on enables Auto + Quiet (silent) mode."
       },
       "co2Threshold": {
         "title": "CO₂ Alarm Threshold (ppm)",

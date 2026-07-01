@@ -23,7 +23,6 @@ export class MolekulePlatformAccessory {
   private aqiService?: Service;
   private co2Service?: Service;
   private humidityService?: Service;
-  private quietSwitch?: Service;
 
   private maxSpeed =
     this.accessory.context.device.capabilities?.MaxFanSpeed ?? 6; //defaults to max speed of 6 if device not in JSON
@@ -155,23 +154,11 @@ export class MolekulePlatformAccessory {
       this.removeService(S.HumiditySensor);
     }
 
-    // Optional Quiet switch for Air Pro (silent auto). Off by default to avoid
-    // cluttering devices that do not benefit from it.
-    const hasSilent =
-      (this.accessory.context.device.capabilities?.AutoFunctionality ?? 0) === 2;
-    if (hasSilent && (this.config.quietMode ?? false)) {
-      this.quietSwitch =
-        this.accessory.getServiceById(S.Switch, "quiet") ||
-        this.accessory.addService(S.Switch, name + " Quiet", "quiet");
-      this.service.addLinkedService(this.quietSwitch);
-      this.quietSwitch
-        .getCharacteristic(C.On)
-        .onGet(() => !!this.state.silent)
-        .onSet(this.setQuiet.bind(this));
-    } else {
-      const existing = this.accessory.getServiceById(S.Switch, "quiet");
-      if (existing) this.accessory.removeService(existing);
-    }
+    // The Quiet switch is now published as its own "Quiet Mode" accessory
+    // (see MolekuleQuietSwitch), so remove any legacy switch that older versions
+    // linked onto this accessory.
+    const legacyQuiet = this.accessory.getServiceById(S.Switch, "quiet");
+    if (legacyQuiet) this.accessory.removeService(legacyQuiet);
   }
 
   /** Name a sensor service and link it to the AirPurifier. */
@@ -275,7 +262,6 @@ export class MolekulePlatformAccessory {
       C.FilterChangeIndication,
       this.getFilterChange(),
     );
-    this.quietSwitch?.updateCharacteristic(C.On, !!this.state.silent);
 
     this.setSensorStatus(online);
 
@@ -477,34 +463,6 @@ export class MolekulePlatformAccessory {
     return this.state.auto;
   }
 
-  /** Toggle Air Pro "silent" auto. Enabling silent forces the device into Auto. */
-  async setQuiet(value: CharacteristicValue) {
-    const { TargetAirPurifierState, On } = this.platform.Characteristic;
-    const response = await this.requester.httpCall(
-      "POST",
-      this.accessory.context.device.serialNumber + "/actions/enable-smart-mode",
-      JSON.stringify({ silent: value ? "1" : "0" }),
-      1,
-    );
-    if (response.status === 204 || response.status === 200) {
-      this.state.silent = value ? 1 : 0;
-      this.state.auto = TargetAirPurifierState.AUTO;
-      this.service.updateCharacteristic(
-        TargetAirPurifierState,
-        TargetAirPurifierState.AUTO,
-      );
-      this.platform.log.info(
-        this.accessory.context.device.name,
-        "quiet",
-        value ? "on" : "off",
-        "(auto enabled)",
-      );
-    } else {
-      this.log.error(this.accessory.context.device.name, "failed to set quiet mode");
-      this.quietSwitch?.updateCharacteristic(On, !!this.state.silent);
-    }
-  }
-
   async setSpeed(value: CharacteristicValue) {
     const clamp = Math.round(
       Math.min(
@@ -555,5 +513,75 @@ export class MolekulePlatformAccessory {
 
   getAirQuality(): CharacteristicValue {
     return this.state.airQuality;
+  }
+}
+
+/**
+ * Standalone "Quiet Mode" accessory for Air Pro devices (silent auto). Exposed as
+ * its own accessory rather than a switch on the purifier so it gets its own tile.
+ * Turning it on enables Auto + Quiet; the purifier's auto state reconciles on the
+ * next poll.
+ */
+export class MolekuleQuietSwitch {
+  private service: Service;
+  private silent = 0;
+
+  constructor(
+    private readonly platform: MolekuleHomebridgePlatform,
+    private readonly accessory: PlatformAccessory,
+    private readonly log: Logger,
+    private readonly requester: HttpAJAX,
+  ) {
+    const C = this.platform.Characteristic;
+    const S = this.platform.Service;
+    const device = accessory.context.device;
+
+    this.accessory
+      .getService(S.AccessoryInformation)!
+      .setCharacteristic(C.Manufacturer, "Molekule")
+      .setCharacteristic(C.Model, (device.subProduct?.name || device.model) + " Quiet")
+      .setCharacteristic(C.SerialNumber, device.serialNumber + "-quiet");
+
+    this.service =
+      this.accessory.getService(S.Switch) ||
+      this.accessory.addService(S.Switch, "Quiet Mode");
+    this.service.setCharacteristic(C.Name, "Quiet Mode");
+    this.service
+      .getCharacteristic(C.On)
+      .onGet(() => !!this.silent)
+      .onSet(this.setQuiet.bind(this));
+  }
+
+  async setQuiet(value: CharacteristicValue) {
+    const response = await this.requester.httpCall(
+      "POST",
+      this.accessory.context.device.serialNumber + "/actions/enable-smart-mode",
+      JSON.stringify({ silent: value ? "1" : "0" }),
+      1,
+    );
+    if (response.status === 204 || response.status === 200) {
+      this.silent = value ? 1 : 0;
+      this.platform.log.info(
+        this.accessory.context.device.name,
+        "quiet",
+        value ? "on" : "off",
+        "(auto enabled)",
+      );
+    } else {
+      this.log.error(this.accessory.context.device.name, "failed to set quiet mode");
+      this.service.updateCharacteristic(this.platform.Characteristic.On, !!this.silent);
+    }
+  }
+
+  async updateFromQuery(query: queryResponse): Promise<void> {
+    const device = query.content?.find(
+      (d) => d.serialNumber === this.accessory.context.device.serialNumber,
+    );
+    if (!device) return;
+    this.silent = +(device.silent === "1");
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.On,
+      !!this.silent,
+    );
   }
 }

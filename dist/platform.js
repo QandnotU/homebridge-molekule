@@ -64,68 +64,60 @@ class MolekuleHomebridgePlatform {
         }
         const devicesQuery = (await response.json());
         this.log.debug(JSON.stringify(devicesQuery));
+        // UUIDs we want to keep this run; anything cached but not listed here is removed.
+        const keep = new Set();
         devicesQuery.content.forEach((device) => {
-            // generate a unique id for the accessory this should be generated from
-            // something globally unique, but constant, for example, the device serial
-            // number or MAC address
             this.log.debug("found device from API: " + JSON.stringify(device));
-            const uuid = this.api.hap.uuid.generate(device.serialNumber);
-            // see if an accessory with the same uuid has already been registered and restored from
-            // the cached devices we stored in the `configureAccessory` method above
-            const existingAccessory = this.accessories.find((accessory) => accessory.UUID === uuid);
             if (this.config.excludeAirMiniPlus && device.model === "Air Mini Pro") {
-                this.log.info("Excluding Air Mini+ device: ", device.name);
-                if (existingAccessory) {
-                    this.log.warn("Removing accessory:", existingAccessory.context.device.name);
-                    this.api.unregisterPlatformAccessories(settings_1.PLUGIN_NAME, settings_1.PLATFORM_NAME, [
-                        existingAccessory,
-                    ]);
-                }
+                this.log.info("Excluding Air Mini+ device:", device.name);
+                return; // not kept -> removed by the cleanup pass below
             }
-            else if (existingAccessory) {
-                // the accessory already exists
-                this.log.info("Restoring existing accessory from cache:", existingAccessory.displayName);
-                // Refresh the cached context with the latest data from the API (e.g.
-                // firmware version, name) rather than only patching capabilities, so
-                // stale values persisted by older plugin versions get corrected.
-                device.capabilities = Models[device.model];
-                existingAccessory.context.device = device;
-                this.api.updatePlatformAccessories([existingAccessory]);
-                this.handlers.push(new platformAccessory_1.MolekulePlatformAccessory(this, existingAccessory, this.config, this.log, this.requester));
-                // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, eg.:
-                // remove platform accessories when no longer present
-                // this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
-                // this.log.info('Removing existing accessory from cache:', existingAccessory.displayName);
+            device.capabilities = Models[device.model];
+            if (!device.capabilities) {
+                this.log.info("The device", device.name, "is not a known model. Using default values.");
             }
-            else {
-                // the accessory does not yet exist, so we need to create it
-                this.log.info("Adding new accessory:", device.name);
-                // create a new accessory
-                const accessory = new this.api.platformAccessory(device.name, uuid);
-                // store a copy of the device object in the `accessory.context`
-                // the `context` property can be used to store any data about the accessory you may need
-                device.capabilities = Models[device.model];
-                if (!device.capabilities) {
-                    this.log.info("The device", device.name, "is not a known model. Using default values.");
-                }
-                accessory.context.device = device;
-                // create the accessory handler for the newly create accessory
-                // this is imported from `platformAccessory.ts`
-                this.handlers.push(new platformAccessory_1.MolekulePlatformAccessory(this, accessory, this.config, this.log, this.requester));
-                // link the accessory to your platform
-                this.api.registerPlatformAccessories(settings_1.PLUGIN_NAME, settings_1.PLATFORM_NAME, [
-                    accessory,
-                ]);
+            // Main air-purifier accessory.
+            const uuid = this.api.hap.uuid.generate(device.serialNumber);
+            keep.add(uuid);
+            const accessory = this.getOrAddAccessory(uuid, device.name, device);
+            this.handlers.push(new platformAccessory_1.MolekulePlatformAccessory(this, accessory, this.config, this.log, this.requester));
+            // Optional standalone "Quiet Mode" accessory for Air Pro (silent auto).
+            if ((device.capabilities?.AutoFunctionality ?? 0) === 2 &&
+                (this.config.quietMode ?? false)) {
+                const quietUuid = this.api.hap.uuid.generate(device.serialNumber + "-quiet");
+                keep.add(quietUuid);
+                const quietAccessory = this.getOrAddAccessory(quietUuid, "Quiet Mode", device);
+                this.handlers.push(new platformAccessory_1.MolekuleQuietSwitch(this, quietAccessory, this.log, this.requester));
             }
         });
+        // Remove any cached accessories that are no longer wanted (device gone,
+        // excluded, or Quiet Mode disabled).
         this.accessories.forEach((accessory) => {
-            if (!devicesQuery.content.find((device) => this.api.hap.uuid.generate(device.serialNumber) === accessory.UUID)) {
-                this.log.warn("Removing accessory:", accessory.context.device.name);
+            if (!keep.has(accessory.UUID)) {
+                this.log.warn("Removing accessory:", accessory.displayName);
                 this.api.unregisterPlatformAccessories(settings_1.PLUGIN_NAME, settings_1.PLATFORM_NAME, [
                     accessory,
                 ]);
             }
         });
+    }
+    /**
+     * Restore a cached accessory (refreshing its context) or create and register a
+     * new one for the given UUID.
+     */
+    getOrAddAccessory(uuid, displayName, device) {
+        const existing = this.accessories.find((a) => a.UUID === uuid);
+        if (existing) {
+            this.log.info("Restoring existing accessory from cache:", existing.displayName);
+            existing.context.device = device;
+            this.api.updatePlatformAccessories([existing]);
+            return existing;
+        }
+        this.log.info("Adding new accessory:", displayName);
+        const accessory = new this.api.platformAccessory(displayName, uuid);
+        accessory.context.device = device;
+        this.api.registerPlatformAccessories(settings_1.PLUGIN_NAME, settings_1.PLATFORM_NAME, [accessory]);
+        return accessory;
     }
     /**
      * Poll the Molekule API once per interval and push fresh state to every
