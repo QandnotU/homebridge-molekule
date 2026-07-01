@@ -68,6 +68,14 @@ export class MolekuleHomebridgePlatform implements DynamicPlatformPlugin {
     // to start discovery of new accessories.
     this.api.on("didFinishLaunching", async () => {
       log.debug("Executed didFinishLaunching callback");
+      // Don't start until configured — avoids error spam (and satisfies the
+      // Homebridge verification "won't start without configuration" rule).
+      if (!config.email || !config.password) {
+        this.log.error(
+          "Missing 'email' and/or 'password' in the Molekule config — the platform will not start until configured.",
+        );
+        return;
+      }
       // run the method to discover / register your devices as accessories
       await this.discoverDevices();
       this.startPolling();
