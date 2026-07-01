@@ -16,6 +16,8 @@ Hey Siri, what's the air quality in the Living Room?
 
 ## Supported Devices
 
+<img src="branding/molekule-hero.png" alt="Molekule Logo" width="300" />
+
 | Device | Fan speeds | Auto / Smart | Air-quality sensors |
 | --- | --- | --- | --- |
 | Molekule Air | 3 | — | — |
