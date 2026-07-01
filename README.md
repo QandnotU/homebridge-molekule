@@ -8,12 +8,6 @@
 
 Exposes your Molekule devices to Apple HomeKit — power, fan speed, Auto (smart) mode, filter life, and air-quality readings — so you can control and automate them from the Home app and Siri:
 
-```
-Hey Siri, what's the status of the Air Purifier Filter?
-Hey Siri, set the speed of the Molekule to 60%.
-Hey Siri, what's the air quality in the Living Room?
-```
-
 ## Supported Devices
 
 <img src="branding/molekule-hero.png" alt="Molekule Logo" width="300" />
