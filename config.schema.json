@@ -49,7 +49,7 @@
         "title": "Expose Quiet Mode switch",
         "type": "boolean",
         "default": false,
-        "description": "Add a separate 'Quiet Mode' switch accessory (Air Pro only) — a live toggle for Quiet (silent) mode. Turning it on enables Auto + Quiet. Independent of the default above; the two stay in sync."
+        "description": "Add a 'Quiet Mode' switch to the purifier (Air Pro only) — a live toggle for Quiet (silent) mode. Turning it on enables Auto + Quiet. Independent of the default above; the two stay in sync. Ungroup in the Home app for its own tile."
       },
       "co2Threshold": {
         "title": "CO₂ Alarm Threshold (ppm)",

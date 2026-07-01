@@ -81,14 +81,6 @@ class MolekuleHomebridgePlatform {
             keep.add(uuid);
             const accessory = this.getOrAddAccessory(uuid, device.name, device);
             this.handlers.push(new platformAccessory_1.MolekulePlatformAccessory(this, accessory, this.config, this.log, this.requester));
-            // Optional standalone "Quiet Mode" accessory for Air Pro (silent auto).
-            if ((device.capabilities?.AutoFunctionality ?? 0) === 2 &&
-                (this.config.quietMode ?? false)) {
-                const quietUuid = this.api.hap.uuid.generate(device.serialNumber + "-quiet");
-                keep.add(quietUuid);
-                const quietAccessory = this.getOrAddAccessory(quietUuid, "Quiet Mode", device);
-                this.handlers.push(new platformAccessory_1.MolekuleQuietSwitch(this, quietAccessory, this.log, this.requester));
-            }
         });
         // Remove any cached accessories that are no longer wanted (device gone,
         // excluded, or Quiet Mode disabled).

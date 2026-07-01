@@ -50,12 +50,12 @@ It should be configurable in plugin settings using homebridge-ui-x, if not, add 
 - `threshold` sets the percentage at which a filter change warning is dislayed in the home app
 - `excludeAirMiniPlus` disables Air Mini+ so you can use their native HomeKit function
 - `silentAuto` **default only** — when a device is switched to Auto *from its purifier tile*, start in Quiet (true) vs Standard (false). Air Pro only
-- `quietMode` adds a separate **Quiet Mode** switch accessory (Air Pro only) — a *live* toggle for Quiet mode (enables Auto + Quiet). Independent of `silentAuto`; the two stay in sync
+- `quietMode` adds a **Quiet Mode** switch on the purifier (Air Pro only) — a *live* toggle for Quiet mode (enables Auto + Quiet). Independent of `silentAuto`; the two stay in sync. Ungroup in the Home app if you want it as its own tile
 - `co2Threshold` CO₂ level in ppm above which the CO₂ sensor reports a detected/abnormal state
 - `pollInterval` how often (seconds, default 30) device state is refreshed from the Molekule API — HomeKit changes apply instantly; this governs how fast changes made elsewhere (physical controls, the app, air-quality drift) show up
 
 # v1.5.0
-- the Quiet switch is now its own **Quiet Mode** accessory (instead of a switch on the purifier tile)
+- optional **Quiet Mode** switch on the purifier for Air Pro (`quietMode`) — grouped with the device, Ungroup in Home for its own tile
 - HomeKit Model now shows the marketing name (e.g. "Molekule Air Pro") instead of the internal codename ("Sequoia Basic")
 - AirQuality now reflects the worse of the PM2.5-derived level and Molekule's own air-quality label (PM2.5 alone read "Excellent" while VOC/CO₂ were elevated)
 - Homebridge v2 support (now requires Node.js 22 or 24)

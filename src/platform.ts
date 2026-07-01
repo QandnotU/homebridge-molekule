@@ -8,19 +8,12 @@ import type {
   Characteristic,
 } from "homebridge";
 import { PLATFORM_NAME, PLUGIN_NAME } from "./settings";
-import {
-  MolekulePlatformAccessory,
-  MolekuleQuietSwitch,
-} from "./platformAccessory";
+import { MolekulePlatformAccessory } from "./platformAccessory";
 import { HttpAJAX } from "./cognito";
 import { models } from "./devices.json";
 
 export interface queryResponse {
   content: deviceData[];
-}
-// Anything the shared poll loop can refresh (purifier accessory or quiet switch).
-interface Pollable {
-  updateFromQuery(query: queryResponse): Promise<void>;
 }
 interface deviceData {
   name: string;
@@ -60,7 +53,7 @@ export class MolekuleHomebridgePlatform implements DynamicPlatformPlugin {
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
   // active accessory handlers, driven by the shared poll loop
-  private readonly handlers: Pollable[] = [];
+  private readonly handlers: MolekulePlatformAccessory[] = [];
   private pollTimer?: NodeJS.Timeout;
 
   constructor(
@@ -150,25 +143,6 @@ export class MolekuleHomebridgePlatform implements DynamicPlatformPlugin {
           this.requester,
         ),
       );
-
-      // Optional standalone "Quiet Mode" accessory for Air Pro (silent auto).
-      if (
-        (device.capabilities?.AutoFunctionality ?? 0) === 2 &&
-        (this.config.quietMode ?? false)
-      ) {
-        const quietUuid = this.api.hap.uuid.generate(
-          device.serialNumber + "-quiet",
-        );
-        keep.add(quietUuid);
-        const quietAccessory = this.getOrAddAccessory(
-          quietUuid,
-          "Quiet Mode",
-          device,
-        );
-        this.handlers.push(
-          new MolekuleQuietSwitch(this, quietAccessory, this.log, this.requester),
-        );
-      }
     });
 
     // Remove any cached accessories that are no longer wanted (device gone,
