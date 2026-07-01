@@ -4,9 +4,9 @@
 <span align="center">
   
 # homebridge-molekule
-<a href="https://www.npmjs.com/package/homebridge-molekule"><img title="npm version" src="https://badgen.net/npm/v/homebridge-molekule?label=stable"></a>
-<a href="https://github.com/csirikak/homebridge-molekule/tree/test"><img title="npm version" src="https://badgen.net/npm/v/homebridge-molekule/alpha?label=alpha"></a>
-<a href="https://www.npmjs.com/package/homebridge-molekule"><img title="npm downloads" src="https://badgen.net/npm/dt/homebridge-molekule"></a>
+<a href="https://github.com/QandnotU/homebridge-molekule/releases/latest"><img title="latest release" src="https://img.shields.io/github/v/release/QandnotU/homebridge-molekule?include_prereleases&sort=semver&label=release"></a>
+<a href="https://github.com/QandnotU/homebridge-molekule/releases"><img title="downloads" src="https://img.shields.io/github/downloads/QandnotU/homebridge-molekule/total?label=downloads"></a>
+<img title="homebridge" src="https://img.shields.io/badge/Homebridge-v1%20%26%20v2-blue">
 </span>
 
 <span align="left">
