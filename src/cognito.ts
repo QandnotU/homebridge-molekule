@@ -19,8 +19,12 @@ export class HttpAJAX {
   private readonly log: Logger;
   private readonly email: string;
   private readonly pass: string;
-  private readonly authenticationDetails: AuthenticationDetails;
-  private readonly cognitoUser: CognitoUser;
+  // Left undefined when the plugin is unconfigured; amazon-cognito-identity-js
+  // throws if constructed without a Username, so we must not build these until
+  // credentials exist. The platform never calls the HTTP methods while
+  // unconfigured, so undefined is safe here.
+  private readonly authenticationDetails?: AuthenticationDetails;
+  private readonly cognitoUser?: CognitoUser;
 
   // Auth state is kept per-instance so multiple platform instances do not
   // clobber each other's tokens.
@@ -32,6 +36,10 @@ export class HttpAJAX {
     this.log = log;
     this.email = config.email;
     this.pass = config.password;
+
+    // Don't build the Cognito objects without credentials — that would throw
+    // and crash Homebridge before the platform's own "not configured" guard.
+    if (!this.email || !this.pass) return;
 
     const authenticationData: IAuthenticationDetailsData = {
       Username: this.email,
@@ -52,7 +60,7 @@ export class HttpAJAX {
 
   refreshIdToken(): Promise<CognitoUserSession> {
     return new Promise((resolve, reject) => {
-      if (!this.refreshToken) {
+      if (!this.refreshToken || !this.cognitoUser) {
         reject(new Error("No refresh token available"));
         return;
       }
@@ -74,9 +82,12 @@ export class HttpAJAX {
   }
 
   initiateAuth(): Promise<string> {
+    if (!this.cognitoUser || !this.authenticationDetails) {
+      return Promise.reject(new Error("Molekule credentials are not configured."));
+    }
     this.log.debug("Authenticating with the Molekule API as " + this.email);
     return new Promise((resolve, reject) =>
-      this.cognitoUser.authenticateUser(this.authenticationDetails, {
+      this.cognitoUser!.authenticateUser(this.authenticationDetails!, {
         onSuccess: (result) => {
           this.refreshToken = result.getRefreshToken();
           this.log.info("✓ Valid Login Credentials");

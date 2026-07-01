@@ -15,6 +15,10 @@ class HttpAJAX {
         this.log = log;
         this.email = config.email;
         this.pass = config.password;
+        // Don't build the Cognito objects without credentials — that would throw
+        // and crash Homebridge before the platform's own "not configured" guard.
+        if (!this.email || !this.pass)
+            return;
         const authenticationData = {
             Username: this.email,
             Password: this.pass,
@@ -33,7 +37,7 @@ class HttpAJAX {
     }
     refreshIdToken() {
         return new Promise((resolve, reject) => {
-            if (!this.refreshToken) {
+            if (!this.refreshToken || !this.cognitoUser) {
                 reject(new Error("No refresh token available"));
                 return;
             }
@@ -53,6 +57,9 @@ class HttpAJAX {
         });
     }
     initiateAuth() {
+        if (!this.cognitoUser || !this.authenticationDetails) {
+            return Promise.reject(new Error("Molekule credentials are not configured."));
+        }
         this.log.debug("Authenticating with the Molekule API as " + this.email);
         return new Promise((resolve, reject) => this.cognitoUser.authenticateUser(this.authenticationDetails, {
             onSuccess: (result) => {
