@@ -1,8 +1,6 @@
 <img src="branding/molekule-icon.png" alt="Molekule Logo" width="125" />
 
-<!-- Once verified, add:
 <a href="https://github.com/homebridge/homebridge/wiki/Verified-Plugins"><img title="verified-by-homebridge" src="https://img.shields.io/badge/homebridge-verified-blueviolet?color=%23491F59&style=flat"></a>
--->
 
 **A Homebridge plugin for Molekule air purifiers.**
 
